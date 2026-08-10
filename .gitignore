@@ -1,0 +1,24 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.log
+
+# IDE
+.vs/
+.vscode/
+*.swp
+*.sln.DotSettings.user
+
+# Build output
+publish/
+dist/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+logs/
