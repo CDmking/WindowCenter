@@ -19,29 +19,36 @@ using static WindowCenter.NativeMethods;
 
 namespace WindowCenter;
 
-/// <summary>全局快捷键管理（Ctrl + Alt + C）</summary>
+/// <summary>全局快捷键管理（默认 Ctrl + Alt + C）</summary>
 internal sealed class HotkeyManager : IDisposable
 {
     private const int HOTKEY_ID = 9001;
 
     private readonly Control _owner;
     private bool _registered;
+    private uint _modifiers = MOD_CONTROL | MOD_ALT;
+    private uint _vk = (uint)Keys.C;
+
+    public uint CurrentModifiers => _modifiers;
+    public uint CurrentKey => _vk;
 
     public HotkeyManager(Control owner)
     {
         _owner = owner;
     }
 
-    /// <summary>注册全局快捷键 Ctrl+Alt+C</summary>
+    /// <summary>设置快捷键（不会自动注册，需手动调用 Register）</summary>
+    public void SetHotkey(uint modifiers, uint vk)
+    {
+        _modifiers = modifiers | MOD_NOREPEAT;
+        _vk = vk;
+    }
+
+    /// <summary>注册全局快捷键</summary>
     public bool Register()
     {
         if (_registered) return true;
-
-        // Ctrl + Alt + C
-        uint mods = MOD_CONTROL | MOD_ALT | MOD_NOREPEAT;
-        uint vk   = (uint)Keys.C;
-
-        _registered = RegisterHotKey(_owner.Handle, HOTKEY_ID, mods, vk);
+        _registered = RegisterHotKey(_owner.Handle, HOTKEY_ID, _modifiers, _vk);
         return _registered;
     }
 

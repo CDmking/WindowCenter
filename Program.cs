@@ -25,6 +25,10 @@ internal sealed class MainForm : Form
     private readonly NotifyIcon    _trayIcon;
     private readonly Container     _components;
 
+    // 需要动态更新文本的菜单项
+    private readonly ToolStripMenuItem _centerItem;
+    private readonly ToolStripMenuItem _reRegisterItem;
+
     // 开机自启菜单项（用于动态更新显示文本）
     private readonly ToolStripMenuItem _autoStartMenu;
     private readonly ToolStripMenuItem _autoStartOff;
@@ -36,8 +40,15 @@ internal sealed class MainForm : Form
         _components = new Container();
         _hotkey     = new HotkeyManager(this);
 
+        // 读取配置文件中的自定义快捷键
+        if (ConfigManager.TryReadHotkey(out var mods, out var vk))
+        {
+            _hotkey.SetHotkey(mods, vk);
+            Logger.Info($"从配置文件加载快捷键: {HotkeyChangeDialog.FormatHotkey(mods, vk)}");
+        }
+
         // 构建菜单并持有引用
-        (_trayIcon, _autoStartMenu, _autoStartOff, _autoStartRegistry, _autoStartTask)
+        (_trayIcon, _centerItem, _reRegisterItem, _autoStartMenu, _autoStartOff, _autoStartRegistry, _autoStartTask)
             = CreateTrayIcon();
 
         // 隐藏主窗口
@@ -62,7 +73,8 @@ internal sealed class MainForm : Form
 
     // ── 托盘图标 + 菜单 ──────────────────────────
 
-    private (NotifyIcon, ToolStripMenuItem, ToolStripMenuItem, ToolStripMenuItem, ToolStripMenuItem)
+    private (NotifyIcon, ToolStripMenuItem, ToolStripMenuItem, ToolStripMenuItem,
+             ToolStripMenuItem, ToolStripMenuItem, ToolStripMenuItem)
         CreateTrayIcon()
     {
         // 图标：蓝色 16x16 十字准星
@@ -76,8 +88,10 @@ internal sealed class MainForm : Form
 
         // ── 构建菜单 ──────────────────────────────
 
+        var hotkeyText = HotkeyChangeDialog.FormatHotkey(_hotkey.CurrentModifiers, _hotkey.CurrentKey);
+
         // 居中
-        var centerItem = new ToolStripMenuItem("🖥  居中当前窗口 (Ctrl+Alt+C)")
+        var centerItem = new ToolStripMenuItem($"🖥  居中当前窗口 ({hotkeyText})")
         { Font = new Font(SystemFonts.MenuFont!, FontStyle.Bold) };
         centerItem.Click += (_, _) => WindowCenterer.CenterActiveWindow();
 
@@ -98,6 +112,10 @@ internal sealed class MainForm : Form
 
         // 刷新菜单勾选状态
         RefreshAutoStartChecks(offItem, registryItem, taskItem, autoStartMenu);
+
+        // 修改快捷键
+        var changeHotkeyItem = new ToolStripMenuItem("⌨  修改快捷键");
+        changeHotkeyItem.Click += (_, _) => ChangeHotkey();
 
         // 重新注册
         var reRegisterItem = new ToolStripMenuItem("🔄 重新注册快捷键");
@@ -131,6 +149,7 @@ internal sealed class MainForm : Form
             new ToolStripSeparator(),
             autoStartMenu,
             new ToolStripSeparator(),
+            changeHotkeyItem,
             reRegisterItem,
             new ToolStripSeparator(),
             exitItem,
@@ -140,7 +159,7 @@ internal sealed class MainForm : Form
         var notifyIcon = new NotifyIcon(_components)
         {
             Icon             = icon,
-            Text             = "WindowCenter - Ctrl+Alt+C 居中窗口",
+            Text             = $"WindowCenter - {hotkeyText} 居中窗口",
             Visible          = true,
             ContextMenuStrip = menu,
         };
@@ -151,7 +170,7 @@ internal sealed class MainForm : Form
                 WindowCenterer.CenterActiveWindow();
         };
 
-        return (notifyIcon, autoStartMenu, offItem, registryItem, taskItem);
+        return (notifyIcon, centerItem, reRegisterItem, autoStartMenu, offItem, registryItem, taskItem);
     }
 
     // ── 自启菜单事件 ─────────────────────────────
@@ -199,6 +218,45 @@ internal sealed class MainForm : Form
             AutoStartMode.ScheduledTask => "📌 开机自启：计划任务",
             _                           => "📌 开机自启",
         };
+    }
+
+    // ── 快捷键修改 ───────────────────────────────
+
+    private void UpdateHotkeyDisplay()
+    {
+        var text = HotkeyChangeDialog.FormatHotkey(_hotkey.CurrentModifiers, _hotkey.CurrentKey);
+        _centerItem.Text = $"🖥  居中当前窗口 ({text})";
+        _trayIcon.Text = $"WindowCenter - {text} 居中窗口";
+    }
+
+    private void ChangeHotkey()
+    {
+        using var dialog = new HotkeyChangeDialog();
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        uint mods = dialog.ResultModifiers;
+        uint vk = dialog.ResultKey;
+
+        _hotkey.Unregister();
+        _hotkey.SetHotkey(mods, vk);
+
+        if (_hotkey.Register())
+        {
+            ConfigManager.SaveHotkey(mods, vk);
+            Logger.Info($"快捷键已更改为 {HotkeyChangeDialog.FormatHotkey(mods, vk)}");
+            _trayIcon.ShowBalloonTip(1500, "WindowCenter",
+                $"✅ 快捷键已更改为 {HotkeyChangeDialog.FormatHotkey(mods, vk)}",
+                ToolTipIcon.Info);
+        }
+        else
+        {
+            Logger.Warn("新快捷键注册失败，可能被其他程序占用");
+            _trayIcon.ShowBalloonTip(3000, "WindowCenter",
+                "⚠ 新快捷键注册失败，请检查是否被其他程序占用。",
+                ToolTipIcon.Warning);
+        }
+
+        UpdateHotkeyDisplay();
     }
 
     // ── 消息处理 ──────────────────────────────────

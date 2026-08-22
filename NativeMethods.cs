@@ -26,9 +26,23 @@ internal static partial class NativeMethods
     public const int MOD_ALT      = 0x0001;
     public const int MOD_CONTROL  = 0x0002;
     public const int MOD_NOREPEAT = 0x4000;
+    public const int MOD_SHIFT    = 0x0004;
+    public const int MOD_WIN      = 0x0008;
 
     public const int WM_HOTKEY    = 0x0312;
     public const int WM_USER      = 0x0400;
+    public const int WM_KEYDOWN   = 0x0100;
+
+    public const int WH_KEYBOARD_LL = 13;
+
+    public const int VK_LCONTROL = 0xA2;
+    public const int VK_RCONTROL = 0xA3;
+    public const int VK_LMENU    = 0xA4;
+    public const int VK_RMENU    = 0xA5;
+    public const int VK_LSHIFT   = 0xA0;
+    public const int VK_RSHIFT   = 0xA1;
+    public const int VK_LWIN     = 0x5B;
+    public const int VK_RWIN     = 0x5C;
 
     public const uint SWP_NOSIZE     = 0x0001;
     public const uint SWP_NOZORDER   = 0x0004;
@@ -104,4 +118,24 @@ internal static partial class NativeMethods
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     public static partial nint GetConsoleWindow();
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    public static partial nint GetModuleHandleW(nint lpModuleName);
+
+    // ─── 键盘钩子 ─────────────────────────────────
+
+    public delegate nint HookProc(int nCode, nint wParam, nint lParam);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    public static partial nint SetWindowsHookExW(int idHook, HookProc lpfn, nint hMod, uint dwThreadId);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool UnhookWindowsHookEx(nint hhk);
+
+    [LibraryImport("user32.dll")]
+    public static partial nint CallNextHookEx(nint hhk, int nCode, nint wParam, nint lParam);
+
+    [LibraryImport("user32.dll")]
+    public static partial short GetAsyncKeyState(int vKey);
 }
