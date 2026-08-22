@@ -28,7 +28,7 @@ internal static class Logger
     static Logger()
     {
         LogDir  = AppContext.BaseDirectory;
-        LogFile = Path.Combine(LogDir, "windowcenter.log");
+        LogFile = Path.Combine(LogDir, "log.txt");
     }
 
     /// <summary>初始化（确保目录存在，写入启动分隔线）</summary>
