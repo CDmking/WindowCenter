@@ -4,7 +4,7 @@ AI 编码代理的项目上下文。在修改或扩展此项目之前阅读。
 
 ## 项目概述
 
-WindowCenter 是一个 Windows 桌面工具，通过全局快捷键 `Ctrl+Alt+C` 将当前活动窗口居中到所在显示器的工作区。它驻留在系统托盘中，支持开机自启。
+WindowCenter 是一个 Windows 桌面工具，通过全局快捷键（默认 `Ctrl+Alt+C`，可自定义）将当前活动窗口居中到所在显示器的工作区。它驻留在系统托盘中，支持开机自启。
 
 ## 技术栈
 
@@ -30,13 +30,15 @@ dotnet publish -c Release -o dist
 ```
 Main (Program.cs)
   └─ MainForm : Form (隐藏窗口，消息泵)
-       ├─ HotkeyManager      → RegisterHotKey / UnregisterHotKey，处理 WM_HOTKEY
-       ├─ NotifyIcon         → 托盘图标 + 右键菜单
+       ├─ HotkeyManager          → RegisterHotKey / UnregisterHotKey，处理 WM_HOTKEY
+       ├─ ConfigManager          → 读写 config.ini（自定义快捷键持久化）
+       ├─ NotifyIcon             → 托盘图标 + 右键菜单
        │    ├─ 居中当前窗口
        │    ├─ 开机自启（关闭 / 注册表 / 计划任务）
+       │    ├─ 修改快捷键 → HotkeyChangeDialog（WH_KEYBOARD_LL 捕获）
        │    ├─ 重新注册快捷键
        │    └─ 退出
-       └─ 消息循环           → 分发 WM_HOTKEY → WindowCenterer
+       └─ 消息循环               → 分发 WM_HOTKEY → WindowCenterer
 ```
 
 ## 模块职责
@@ -46,16 +48,19 @@ Main (Program.cs)
 | `Program.cs` | 入口、MainForm、托盘菜单构建、消息泵 | 所有模块 |
 | `NativeMethods.cs` | `static partial` 类，所有 P/Invoke + 常量 | 无 |
 | `WindowCenterer.cs` | 纯静态方法 `CenterActiveWindow()` | NativeMethods, Logger |
-| `HotkeyManager.cs` | `IDisposable`，包装热键注册/注销/WndProc 分发 | NativeMethods, WindowCenterer |
+| `HotkeyManager.cs` | `IDisposable`，可配置热键注册/注销/WndProc 分发 | NativeMethods, WindowCenterer |
+| `HotkeyChangeDialog.cs` | 快捷键录入对话框，`WH_KEYBOARD_LL` 全局捕获按键组合 | NativeMethods |
+| `ConfigManager.cs` | 纯静态类，读写 `config.ini`（自定义快捷键持久化） | `System.IO` |
 | `AutoStartManager.cs` | 纯静态类，注册表 + 计划任务 CRUD | `System.Diagnostics`, `Microsoft.Win32` |
-| `Logger.cs` | 纯静态类，线程安全文件日志 | `System.IO` |
+| `Logger.cs` | 纯静态类，线程安全文件日志（`log.txt`） | `System.IO` |
 | `app.manifest` | UAC `asInvoker` + Win10 兼容性 | — |
 
 ## 编码约定
 
 - **P/Invoke**: 所有 Windows API 声明集中在 `NativeMethods.cs`，使用 `LibraryImportAttribute`（源码生成），因此项目需要 `<AllowUnsafeBlocks>true`
 - **Nullable**: 启用 `<Nullable>enable</Nullable>`，所有引用类型默认为不可空，需要时显式标记 `?`
-- **日志**: 使用 `Logger.Info/Warn/Error`，日志写入程序所在目录的 `windowcenter.log`（`AppContext.BaseDirectory`）。日志失败不得抛出异常
+- **日志**: 使用 `Logger.Info/Warn/Error`，日志写入程序所在目录的 `log.txt`（`AppContext.BaseDirectory`）。日志失败不得抛出异常
+- **配置**: `config.ini` 仅在用户主动修改快捷键时创建，位于 `AppContext.BaseDirectory`。启动时若文件不存在则使用默认快捷键，不创建文件
 - **权限**: 程序自身不要求管理员权限（`asInvoker`）。提权仅发生在用户选择计划任务自启时，通过 `Process.Start` + `Verb = "runas"` 临时提升
 - **单实例**: `Mutex("WindowCenter_SingleInstance")` 防止重复启动
 - **托盘菜单状态**: 通过 `RefreshAutoStartChecks` 同步当前自启模式到菜单勾选状态，切换时先清除后启用
@@ -66,4 +71,5 @@ Main (Program.cs)
 - 全屏窗口：不跳过（`MONITOR_DEFAULTTONEAREST` 会正确返回显示器）
 - 多显示器：`MonitorFromWindow` 自动匹配窗口当前所在显示器
 - 任务栏避让：始终使用 `MONITORINFO.rcWork`
-- 热键冲突：启动时注册失败静默处理，托盘菜单提供"重新注册"选项
+- 热键冲突：启动时注册失败静默处理，托盘菜单提供"修改快捷键"和"重新注册"选项
+- 自定义快捷键：修改后写入 `config.ini`（`[Hotkey]` 节，`Modifiers` + `Key` 均为十进制 uint）。下次启动自动读取并应用
